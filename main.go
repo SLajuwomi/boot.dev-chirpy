@@ -8,10 +8,13 @@ import (
 
 func main() {
 	fmt.Println("Hello world!")
-	newServeMux := http.NewServeMux()
-	newServer := http.Server{
-		Handler: newServeMux,
-		Addr:    ":8080",
+	const filepathRoot = "."
+	const port = "8080"
+	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.Dir(filepathRoot)))
+	newServer := &http.Server{
+		Handler: mux,
+		Addr:    ":" + port,
 	}
 	err := newServer.ListenAndServe()
 	if err != nil {
