@@ -3,12 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"sync/atomic"
 )
 
+// postgres://stephen:postgres@localhost:5432/chirpy
 type apiConfig struct {
 	fileserverHits atomic.Int32
 }
@@ -41,54 +41,30 @@ func validateChirp(w http.ResponseWriter, r *http.Request) {
 		Body string `json:"body"`
 	}
 
+	type returnVals struct {
+		CleanedBody string `json:"cleaned_body"`
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %v", err)
-		w.WriteHeader(500)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
 	}
 
-	// type failed struct {
-	// 	Error string `json:"error"`
-	// }
-
-	// type valid struct {
-	// 	Valid bool `json:"valid"`
-	// }
-
-	type returnVals struct {
-		Error string `json:"error"`
-		Valid bool   `json:"valid"`
-	}
-
-	respBody := returnVals{
-		Error: "Something went wrong",
-		Valid: false,
-	}
+	const maxChirpLength = 140
 	// log.Printf("The text: %v\n the length: %v\n", params.Body, len(params.Body))
-	if len(params.Body) > 140 {
+	if len(params.Body) > maxChirpLength {
 		// log.Printf("here")
-		respBody.Error = "Chirp is too long"
-	} else {
-		respBody.Valid = true
-	}
-	w.Header().Set("Content-Type", "application/json")
-
-	dat, err := json.Marshal(respBody)
-	if err != nil {
-		w.WriteHeader(400)
-		w.Write(dat)
+		respondWithError(w, http.StatusBadRequest, "Chirp is too long", nil)
 		return
 	}
-	if respBody.Valid {
-		w.WriteHeader(200)
+	params.Body = removeProfane(params.Body)
 
-	} else {
-		w.WriteHeader(400)
-	}
-	w.Write(dat)
+	respondWithJSON(w, http.StatusOK, returnVals{
+		CleanedBody: params.Body,
+	})
 
 }
 func main() {
