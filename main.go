@@ -1,16 +1,34 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"sync/atomic"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
+	"github.com/slajuwomi/chirpy/internal/database"
 )
 
 // postgres://stephen:postgres@localhost:5432/chirpy
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	dbQueries      database.Queries
+	platform       string
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -34,6 +52,17 @@ func (cfg *apiConfig) numOfRequests(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) resetRequests(w http.ResponseWriter, r *http.Request) {
 	cfg.fileserverHits.Store(0)
+	if cfg.platform == "dev" {
+		err := cfg.dbQueries.DeleteAllUsers(r.Context())
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to delete all users", err)
+			return
+		}
+	} else {
+		respondWithError(w, http.StatusForbidden, "You are not an admin", errors.New("not an admin"))
+		return
+	}
+
 }
 
 func validateChirp(w http.ResponseWriter, r *http.Request) {
@@ -67,22 +96,66 @@ func validateChirp(w http.ResponseWriter, r *http.Request) {
 	})
 
 }
+
+func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parametrs", err)
+		return
+	}
+
+	dbUser, err := cfg.dbQueries.CreateUser(r.Context(), params.Email)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to create user", err)
+		return
+	}
+
+	user := User{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     dbUser.Email,
+	}
+
+	respondWithJSON(w, http.StatusCreated, user)
+
+}
 func main() {
-	fmt.Println("Hello world!")
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	platform := os.Getenv("PLATFORM")
+	if platform == "" {
+		log.Fatal("PLATFORM must be set")
+	}
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		fmt.Println("failed to open connection to the database: ", err)
+		os.Exit(1)
+	}
+	dbQueries := database.New(db)
 	const filepathRoot = "."
 	const port = "8080"
 	var apiCfg apiConfig
+	apiCfg.dbQueries = *dbQueries
+	apiCfg.platform = platform
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
 	mux.HandleFunc("GET /admin/metrics", apiCfg.numOfRequests)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetRequests)
 	mux.HandleFunc("GET /api/healthz", customHandler)
 	mux.HandleFunc("POST /api/validate_chirp", validateChirp)
+	mux.HandleFunc("POST /api/users", apiCfg.createUser)
 	newServer := &http.Server{
 		Handler: mux,
 		Addr:    ":" + port,
 	}
-	err := newServer.ListenAndServe()
+	err = newServer.ListenAndServe()
 	if err != nil {
 		fmt.Printf("failed to start server: %v\n", err)
 		os.Exit(1)
