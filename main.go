@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -150,6 +151,51 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusCreated, user)
 
 }
+
+func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
+	var allChirps []Chirp
+	dbAllChirps, err := cfg.dbQueries.GetAllChirps(r.Context())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to get all chirps from database", err)
+		return
+	}
+	for _, chirp := range dbAllChirps {
+		allChirps = append(allChirps, Chirp{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
+		})
+	}
+
+	sort.Slice(allChirps, func(i, j int) bool {
+		return allChirps[i].CreatedAt.Before(allChirps[j].CreatedAt)
+	})
+
+	respondWithJSON(w, http.StatusOK, allChirps)
+}
+
+func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
+	passedUUID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to parse passed UUID", err)
+		return
+	}
+	dbChirp, err := cfg.dbQueries.GetSingleChirp(r.Context(), passedUUID)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "Failed to get chirp from datbase", err)
+		return
+	}
+	chirp := Chirp{
+		ID:        dbChirp.ID,
+		CreatedAt: dbChirp.CreatedAt,
+		UpdatedAt: dbChirp.UpdatedAt,
+		Body:      dbChirp.Body,
+		UserID:    dbChirp.UserID,
+	}
+	respondWithJSON(w, http.StatusOK, chirp)
+}
 func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
@@ -175,6 +221,8 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", customHandler)
 	mux.HandleFunc("POST /api/users", apiCfg.createUser)
 	mux.HandleFunc("POST /api/chirps", apiCfg.validateChirp)
+	mux.HandleFunc("GET /api/chirps", apiCfg.getAllChirps)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirp)
 	newServer := &http.Server{
 		Handler: mux,
 		Addr:    ":" + port,
