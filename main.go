@@ -31,6 +31,14 @@ type User struct {
 	Email     string    `json:"email"`
 }
 
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
+}
+
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg.fileserverHits.Add(1)
@@ -65,13 +73,10 @@ func (cfg *apiConfig) resetRequests(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func validateChirp(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) validateChirp(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Body string `json:"body"`
-	}
-
-	type returnVals struct {
-		CleanedBody string `json:"cleaned_body"`
+		Body   string `json:"body"`
+		UserID string `json:"user_id"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -90,10 +95,29 @@ func validateChirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params.Body = removeProfane(params.Body)
+	uuidUserID, err := uuid.Parse(params.UserID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't parse user id into UUID", err)
+		return
+	}
 
-	respondWithJSON(w, http.StatusOK, returnVals{
-		CleanedBody: params.Body,
+	dbChirp, err := cfg.dbQueries.CreateChirp(r.Context(), database.CreateChirpParams{
+		Body:   params.Body,
+		UserID: uuidUserID,
 	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to create chirp", err)
+		return
+	}
+
+	chirp := Chirp{
+		ID:        dbChirp.ID,
+		CreatedAt: dbChirp.CreatedAt,
+		UpdatedAt: dbChirp.UpdatedAt,
+		Body:      dbChirp.Body,
+		UserID:    dbChirp.UserID,
+	}
+	respondWithJSON(w, http.StatusCreated, chirp)
 
 }
 
@@ -149,8 +173,8 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.numOfRequests)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetRequests)
 	mux.HandleFunc("GET /api/healthz", customHandler)
-	mux.HandleFunc("POST /api/validate_chirp", validateChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.createUser)
+	mux.HandleFunc("POST /api/chirps", apiCfg.validateChirp)
 	newServer := &http.Server{
 		Handler: mux,
 		Addr:    ":" + port,
