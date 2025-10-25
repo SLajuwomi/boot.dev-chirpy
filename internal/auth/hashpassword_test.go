@@ -1,52 +1,69 @@
 package auth
 
 import (
-	"fmt"
 	"testing"
 )
 
-func TestHashPassword(t *testing.T) {
-	password := "MarkHanck7868"
-	hashedPassword, err := HashPassword(password)
-	if err != nil {
-		t.Errorf("Hashing password failed: %v\n", err)
-	}
-	validHash, err := CheckPasswordHash(password, hashedPassword)
-	if err != nil {
-		t.Errorf("Hash is not valid: %v\n", err)
-	}
-	fmt.Printf("The validated hash: %v\nand it's password: %v\nValid hash: %v\n", hashedPassword, password, validHash)
-}
+func TestCheckPasswordHash(t *testing.T) {
+	// First, we need to create some hashed passwords for testing
+	password1 := "correctPassword123!"
+	password2 := "anotherPassword456!"
+	hash1, _ := HashPassword(password1)
+	hash2, _ := HashPassword(password2)
 
-func TestInvalidHash(t *testing.T) {
-	password := "MarkHanck7868"
-	password2 := "JoeTheDuck"
-	hashedPassword, err := HashPassword(password)
-	if err != nil {
-		t.Errorf("Hashing password failed: %v\n", err)
+	tests := []struct {
+		name          string
+		password      string
+		hash          string
+		wantErr       bool
+		matchPassword bool
+	}{
+		{
+			name:          "Correct password",
+			password:      password1,
+			hash:          hash1,
+			wantErr:       false,
+			matchPassword: true,
+		},
+		{
+			name:          "Incorrect password",
+			password:      "wrongPassword",
+			hash:          hash1,
+			wantErr:       false,
+			matchPassword: false,
+		},
+		{
+			name:          "Password doesn't match different hash",
+			password:      password1,
+			hash:          hash2,
+			wantErr:       false,
+			matchPassword: false,
+		},
+		{
+			name:          "Empty password",
+			password:      "",
+			hash:          hash1,
+			wantErr:       false,
+			matchPassword: false,
+		},
+		{
+			name:          "Invalid hash",
+			password:      password1,
+			hash:          "invalidhash",
+			wantErr:       true,
+			matchPassword: false,
+		},
 	}
-	hashedPassword2, err := HashPassword(password2)
-	if err != nil {
-		t.Errorf("Hashing password 2 failed: %v\n", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			match, err := CheckPasswordHash(tt.password, tt.hash)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CheckPasswordHash() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && match != tt.matchPassword {
+				t.Errorf("CheckPasswordHash() expects %v, got %v", tt.matchPassword, match)
+			}
+		})
 	}
-	validHash, err := CheckPasswordHash(password, hashedPassword)
-	if err != nil || !validHash {
-		t.Errorf("Hash is not valid: %v\n", err)
-	}
-	validHash2, err := CheckPasswordHash(password2, hashedPassword2)
-	if err != nil || !validHash2 {
-		t.Errorf("Hash 2 is not valid: %v\n", err)
-	}
-	invalidHash, err := CheckPasswordHash(password, hashedPassword2)
-	if err != nil || invalidHash {
-		t.Errorf("Hash is valid (not expected): %v\n", err)
-	}
-	invalidHash2, err := CheckPasswordHash(password2, hashedPassword)
-	if err != nil || invalidHash2 {
-		t.Errorf("Hash 2 is valid (not expected): %v\n", err)
-	}
-	fmt.Printf("The validated hash: %v\nand it's password: %v\nValid hash: %v\n", hashedPassword, password, validHash)
-	fmt.Printf("The 2nd validated hash: %v\nand it's password: %v\nValid hash: %v\n", hashedPassword2, password2, validHash2)
-	fmt.Printf("The invalidated hash: %v\nand it's password: %v\nValid hash: %v\n", hashedPassword, password, invalidHash)
-	fmt.Printf("The 2nd invalidated hash: %v\nand it's password: %v\nValid hash: %v\n", hashedPassword2, password2, invalidHash2)
 }
