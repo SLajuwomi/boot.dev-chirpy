@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -52,5 +53,16 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 }
 
 func GetBearerToken(headers http.Header) (string, error) {
-
+	authContent := headers.Get("Authorization")
+	if authContent != "" {
+		splitted := strings.Split(authContent, " ")
+		if splitted[0] != "Bearer" {
+			return "", fmt.Errorf("wrong prefix. expected %v, got %v", "Bearer", splitted[0])
+		}
+		if len(splitted) > 2 {
+			return "", fmt.Errorf("extra spaces or invalid token")
+		}
+		return splitted[1], nil
+	}
+	return "", fmt.Errorf("failed to get bearer token")
 }
