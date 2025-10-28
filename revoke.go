@@ -27,7 +27,6 @@ func (cfg *apiConfig) revoke(w http.ResponseWriter, r *http.Request) {
 	dbRefreshToken.UpdatedAt = time.Now()
 	err = cfg.dbQueries.RevokeRefreshToken(r.Context(), database.RevokeRefreshTokenParams{
 		RevokedAt: dbRefreshToken.RevokedAt,
-		UpdatedAt: dbRefreshToken.UpdatedAt,
 		Token:     refreshToken,
 	})
 	if err != nil {
