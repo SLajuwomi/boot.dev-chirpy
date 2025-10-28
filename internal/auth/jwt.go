@@ -15,8 +15,6 @@ type MyCustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-// var mySigningKey = []byte("AllYourBase")
-
 func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (string, error) {
 	claims := MyCustomClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
