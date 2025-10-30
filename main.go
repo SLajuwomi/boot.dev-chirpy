@@ -19,6 +19,7 @@ type apiConfig struct {
 	dbQueries      database.Queries
 	platform       string
 	secret         string
+	polkaKey       string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -46,6 +47,7 @@ func main() {
 	dbURL := os.Getenv("DB_URL")
 	platform := os.Getenv("PLATFORM")
 	tokenSecret := os.Getenv("TOKEN_SECRET")
+	polkaKey := os.Getenv("POLKA_KEY")
 
 	if platform == "" {
 		log.Fatal("PLATFORM must be set")
@@ -65,7 +67,7 @@ func main() {
 	apiCfg.dbQueries = *dbQueries
 	apiCfg.platform = platform
 	apiCfg.secret = tokenSecret
-
+	apiCfg.polkaKey = polkaKey
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
 	mux.HandleFunc("GET /admin/metrics", apiCfg.numOfRequests)
